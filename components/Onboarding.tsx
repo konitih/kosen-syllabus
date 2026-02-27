@@ -110,7 +110,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       });
 
       if (!urlResponse.ok) {
-        throw new Error(`URL取得失敗: ${urlResponse.statusText}`);
+        // statusText は空になることがあるため、レスポンスボディからエラーを読む
+        let errMsg = `HTTP ${urlResponse.status}`;
+        try {
+          const errData = await urlResponse.json();
+          errMsg = errData.error ?? errData.message ?? errMsg;
+        } catch {
+          const errText = await urlResponse.text().catch(() => '');
+          if (errText) errMsg += `: ${errText.slice(0, 200)}`;
+        }
+        throw new Error(`URL取得失敗: ${errMsg}`);
       }
 
       const urlData = await urlResponse.json();
@@ -120,12 +129,19 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       setCurrentProgress({ current: 0, total: syllabusUrls.length });
 
       if (syllabusUrls.length === 0) {
-        // サンプルデータへのフォールバックを廃止 — エラーを表示してリトライを促す
-        const errorDetail = urlData.error
-          ? `詳細: ${urlData.error}`
-          : `school_id=${availableSchools.find((s) => s.id === selectedSchoolId)?.syllabusId}, ` +
-            `department="${schoolInfo.department}", year=${schoolInfo.academicYear}`;
-        const msg = `シラバスURLが0件でした。${errorDetail}`;
+        // サンプルデータへのフォールバックを廃止 — 具体的なエラー詳細を表示
+        const parts: string[] = [];
+        if (urlData.error) parts.push(urlData.error);
+        if (urlData.scrapedUrl) parts.push(`対象URL: ${urlData.scrapedUrl}`);
+        if (typeof urlData.totalLinks === 'number')
+          parts.push(`取得リンク数: ${urlData.totalLinks}件（シラバスURL: 0件）`);
+        if (!parts.length) {
+          parts.push(
+            `school_id=${availableSchools.find((s) => s.id === selectedSchoolId)?.syllabusId}, ` +
+            `department="${schoolInfo.department}", year=${schoolInfo.academicYear}`
+          );
+        }
+        const msg = `シラバスURLが0件でした。${parts.join(' / ')}`;
         setFetchError(msg);
         toast({
           title: 'シラバスURLが見つかりません',
@@ -157,7 +173,15 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           });
 
           if (!detailResponse.ok) {
-            throw new Error(`詳細取得失敗: ${detailResponse.statusText}`);
+            let errMsg = `HTTP ${detailResponse.status}`;
+            try {
+              const errData = await detailResponse.json();
+              errMsg = errData.error ?? errData.message ?? errMsg;
+            } catch {
+              const errText = await detailResponse.text().catch(() => '');
+              if (errText) errMsg += `: ${errText.slice(0, 100)}`;
+            }
+            throw new Error(`詳細取得失敗: ${errMsg}`);
           }
 
           return await detailResponse.json();
