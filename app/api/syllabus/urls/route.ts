@@ -1,42 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Stage 1: URLリスト取得
+ * app/api/syllabus/urls/route.ts
+ *
+ * Stage 1: シラバス URL リスト取得
  *
  * 修正点:
- *  - /v1/crawl（非同期・ジョブIDポーリング必要）→ /v1/scrape（同期）に切替
- *  - NEXT_PUBLIC_ prefix を削除（サーバー専用キー）
- *  - year をリクエストボディから受け取り、現在年を上限としてバリデーション
+ *   - /v1/crawl（非同期ジョブ）→ /v1/scrape（同期）に変更
+ *   - NEXT_PUBLIC_FIRECRAWL_API_KEY → FIRECRAWL_API_KEY（サーバー側環境変数）
  */
 export async function POST(request: NextRequest) {
   try {
     const { schoolId, department, grade, year } = await request.json();
 
-    if (!schoolId || !department || !grade) {
+    if (!schoolId || !department || !grade || !year) {
       return NextResponse.json(
-        { error: '必須パラメータが不足しています (schoolId, department, grade)' },
+        { error: '必須パラメータが不足しています (schoolId, department, grade, year)' },
         { status: 400 }
       );
     }
 
-    // サーバーサイド専用キー（NEXT_PUBLIC_ は不要・危険）
+    // ✅ サーバー側環境変数（NEXT_PUBLIC_ を外した）
     const apiKey = process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'FIRECRAWL_API_KEY が環境変数に設定されていません' },
+        { error: 'FIRECRAWL_API_KEY が設定されていません（Vercel 環境変数を確認してください）' },
         { status: 500 }
       );
     }
 
-    // 年度は現在年を上限とする
-    const currentYear = new Date().getFullYear();
-    const academicYear = Math.min(Number(year) || currentYear, currentYear);
+    const syllabusUrl = buildSyllabusSearchUrl(schoolId, department, grade, year);
+    console.log('[urls] Scraping URL list from:', syllabusUrl);
 
-    const listingUrl = buildSyllabusListingUrl(schoolId, department, Number(grade), academicYear);
-    console.log('[syllabus/urls] Scraping listing page:', listingUrl);
-
-    // /v1/crawl（非同期）ではなく /v1/scrape（同期）を使用
-    // 一覧ページを1回スクレイプしてリンクを抽出する
+    // ✅ /v1/scrape（同期エンドポイント）を使用
+    //    /v1/crawl は非同期ジョブ（ポーリングが必要）なので Vercel では使えない
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -44,174 +41,119 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        url: listingUrl,
-        formats: ['markdown', 'links'],
-        timeout: 25000,
+        url: syllabusUrl,
+        formats: ['links'],   // リンク一覧だけ取得（markdown/html 不要）
+        timeout: 30000,
       }),
     });
 
     if (!scrapeResponse.ok) {
       const errorText = await scrapeResponse.text();
-      console.error('[syllabus/urls] FireCrawl error:', errorText);
+      console.error('[urls] FireCrawl scrape failed:', errorText);
       return NextResponse.json(
-        { error: 'シラバス一覧ページの取得に失敗しました', details: errorText },
+        { error: 'URLリスト取得に失敗しました', details: errorText },
         { status: scrapeResponse.status }
       );
     }
 
     const scrapeData = await scrapeResponse.json();
 
-    // `links` フィールドから詳細ページURLを抽出
-    // FireCrawl は formats:['links'] で全リンクを返す
-    const rawLinks: string[] = scrapeData.data?.links ?? scrapeData.links ?? [];
+    // FireCrawl v1/scrape の links レスポンスからシラバス URL を抽出
+    const allLinks: string[] = scrapeData?.data?.links ?? scrapeData?.links ?? [];
+    const syllabusUrls = extractSyllabusUrls(allLinks, schoolId);
 
-    // Markdownからも補完抽出（linksが空の場合のフォールバック）
-    const markdownLinks = extractLinksFromMarkdown(
-      scrapeData.data?.markdown ?? scrapeData.markdown ?? '',
-      listingUrl
-    );
-
-    const allLinks = [...new Set([...rawLinks, ...markdownLinks])];
-    const syllabusUrls = filterSyllabusDetailUrls(allLinks, schoolId);
-
-    console.log(
-      `[syllabus/urls] Found ${syllabusUrls.length} detail URLs from ${allLinks.length} total links`
-    );
+    console.log(`[urls] Found ${syllabusUrls.length} syllabus URLs`);
 
     return NextResponse.json({
       schoolId,
       department,
       grade,
-      year: academicYear,
+      year,
       totalUrls: syllabusUrls.length,
       urls: syllabusUrls,
-      listingUrl,
     });
   } catch (error) {
-    console.error('[syllabus/urls] Unexpected error:', error);
+    console.error('[urls] API error:', error);
     return NextResponse.json(
-      { error: 'URLリスト取得中に予期しないエラーが発生しました' },
+      { error: 'URLリスト取得処理でエラーが発生しました' },
       { status: 500 }
     );
   }
 }
 
-// -----------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------
-
 /**
- * 長野高専シラバス一覧ページのURLを構築
- * https://syllabus.kosen-k.go.jp/Pages/PublicSyllabus?school_id=XX&dept_code=YY&grade=Z&year=YYYY
+ * シラバス検索 URL を構築する
  */
-function buildSyllabusListingUrl(
+function buildSyllabusSearchUrl(
   schoolId: string,
   department: string,
   grade: number,
   year: number
 ): string {
-  const BASE = 'https://syllabus.kosen-k.go.jp';
-  const deptCode = DEPT_CODES[department] ?? '01';
-  const params = new URLSearchParams({
-    school_id: schoolId,
-    dept_code: deptCode,
-    grade: String(grade),
-    year: String(year),
-  });
-  return `${BASE}/Pages/PublicSyllabus?${params}`;
+  const baseUrl = 'https://syllabus.kosen-k.go.jp';
+  const deptCode = departmentToCode(department);
+  return (
+    `${baseUrl}/Pages/PublicSyllabus` +
+    `?school_id=${schoolId}&dept_code=${deptCode}&grade=${grade}&year=${year}`
+  );
 }
 
 /**
- * 学科名 → コードのマッピング（長野高専）
+ * 学科名 → シラバスシステムコード変換
+ *
+ * ⚠️ 実際の dept_code は学校ごとに異なります。
+ *    公式シラバスサイト URL を確認して調整してください。
  */
-const DEPT_CODES: Record<string, string> = {
-  '電子情報工学科': '01',
-  '機械工学科': '02',
-  '電気工学科': '03',
-  '土木工学科': '04',
-  '建築学科': '05',
-  '物質工学科': '06',
-  '環境工学科': '07',
-};
-
-/**
- * Markdownテキストからリンクを抽出
- * [テキスト](URL) 形式と <URL> 形式に対応
- */
-function extractLinksFromMarkdown(markdown: string, baseUrl: string): string[] {
-  const urls: string[] = [];
-  const base = new URL(baseUrl);
-
-  // Markdown link pattern: [text](url)
-  const mdPattern = /\[([^\]]*)\]\(([^)]+)\)/g;
-  let match;
-  while ((match = mdPattern.exec(markdown)) !== null) {
-    urls.push(resolveUrl(match[2].trim(), base));
-  }
-
-  // Raw URL pattern: http(s)://...
-  const rawPattern = /https?:\/\/[^\s"'<>)]+/g;
-  while ((match = rawPattern.exec(markdown)) !== null) {
-    urls.push(match[0].trim());
-  }
-
-  return urls.filter(Boolean);
+function departmentToCode(department: string): string {
+  // 長野高専（新課程）
+  const codeMap: Record<string, string> = {
+    '工学科':             '01',
+    '情報エレクトロニクス系': '02',
+    '機械ロボティクス系':   '03',
+    '都市デザイン系':       '04',
+    // 長野高専（旧課程）
+    '機械工学科':         '11',
+    '電気電子工学科':     '12',
+    '電子制御工学科':     '13',
+    '電子情報工学科':     '14',
+    '環境都市工学科':     '15',
+  };
+  // 完全一致
+  if (codeMap[department]) return codeMap[department];
+  // 部分一致フォールバック
+  const partial = Object.keys(codeMap).find((k) => department.includes(k) || k.includes(department));
+  return partial ? codeMap[partial] : '01';
 }
 
 /**
- * 相対URLを絶対URLに解決
+ * スクレイプ結果からシラバスページ URL を抽出する
  */
-function resolveUrl(href: string, base: URL): string {
-  try {
-    return new URL(href, base).toString();
-  } catch {
-    return '';
-  }
-}
-
-/**
- * URLリストからシラバス詳細ページのみをフィルタ
- * - 同じドメインのもの
- * - URLに Detail, syllabus, course などのキーワードを含む
- * - 重複排除 + バリデーション
- */
-function filterSyllabusDetailUrls(urls: string[], schoolId: string): string[] {
-  const SYLLABUS_BASE = 'https://syllabus.kosen-k.go.jp';
-
-  const DETAIL_PATTERNS = [
-    /\/Pages\/PublicSyllabus\/Details/i,
-    /syllabus[_-]?detail/i,
-    /[?&]subject_id=/i,
-    /[?&]id=\d+/i,
-  ];
-
+function extractSyllabusUrls(links: string[], schoolId: string): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
-  for (const url of urls) {
-    if (!url) continue;
-
-    // バリデーション
-    let parsedUrl: URL;
+  for (const url of links) {
+    if (!url || seen.has(url)) continue;
     try {
-      parsedUrl = new URL(url);
+      new URL(url); // URL 形式チェック
     } catch {
       continue;
     }
-
-    // 同じドメインのみ
-    if (!url.startsWith(SYLLABUS_BASE)) continue;
-
-    // 一覧ページ自体は除外
-    if (!DETAIL_PATTERNS.some((p) => p.test(url))) continue;
-
-    // 重複排除
-    const key = parsedUrl.pathname + parsedUrl.search;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    result.push(url);
+    if (isSyllabusDetailUrl(url, schoolId)) {
+      seen.add(url);
+      result.push(url);
+    }
   }
-
   return result;
+}
+
+/**
+ * 個別シラバスページの URL かどうかを判定する
+ */
+function isSyllabusDetailUrl(url: string, schoolId: string): boolean {
+  return (
+    url.includes('syllabus.kosen-k.go.jp') &&
+    (url.includes('/Details/') || url.includes('subject_id=') || url.includes('syllabus_id=')) &&
+    url.includes(`school_id=${schoolId}`)
+  );
 }

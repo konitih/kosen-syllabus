@@ -1,121 +1,92 @@
 /**
  * lib/kosenList.ts
  *
- * 国立高等専門学校機構（NIT）に属する全51校の情報
+ * 国立高等専門学校機構（NIT）全51校のデータ
+ * 出典: https://www.kosen-k.go.jp/nationwide/all_kosen_linkmap
  *
- * ソース:
- *   - 校名・地区分類: https://www.kosen-k.go.jp/nationwide/all_kosen_linkmap
- *   - 長野高専学科情報: https://www.nagano-nct.ac.jp/course
- *
- * ⚠️ 注意:
- *   各校の学科名は学科改組により変更される場合があります。
- *   本ファイルは令和7年（2025年）現在の情報を基に作成しています。
- *   特に長野高専は令和4年度（2022年）より学科を「工学科」に再編しています。
+ * ⚠️ departments は Department[]（オブジェクト配列）です。
+ *    JSX で文字列として描画する場合は必ず dept.name を参照してください。
+ *    例: <option value={dept.name}>{dept.label ?? dept.name}</option>
  */
 
-// -----------------------------------------------------------------------
+// ─────────────────────────────────────────────
 // 型定義
-// -----------------------------------------------------------------------
+// ─────────────────────────────────────────────
 
-/**
- * 入学年度による学科区分
- * - 'legacy': 旧カリキュラム（特定年度以前の入学生）
- * - 'current': 新カリキュラム（特定年度以降の入学生）
- * - undefined: 区分なし（年度による差異がない学校）
- */
+/** 新旧カリキュラム区分 */
 export type DepartmentEra = 'legacy' | 'current';
 
 export interface Department {
-  /** シラバスシステムや一般表示に使う学科名 */
+  /** API・内部キー（一意） */
   name: string;
-  /** UIに表示するラベル（省略時は name を使用） */
+  /** UI 表示ラベル（省略時は name を使用） */
   label?: string;
-  /** 補足情報（例: "2年次以降に系を選択"） */
+  /** 補足情報（キャンパス名・系の説明など） */
   note?: string;
-  /** 旧/新区分 */
+  /** 'legacy'=旧課程 / 'current'=新課程 / undefined=区分なし */
   era?: DepartmentEra;
 }
 
 export interface KosenSchool {
-  /** アプリ内部ID（英数字小文字） */
+  /** アプリ内部 ID */
   id: string;
-  /**
-   * シラバスシステム（syllabus.kosen-k.go.jp）の school_id
-   * 不明な場合は undefined — 実際の値は各校シラバスURLから確認してください
-   */
+  /** 公式シラバスシステムの school_id パラメータ */
   syllabusId?: string;
   /** 正式名称 */
   name: string;
-  /** 通称（高専名） */
+  /** 通称 */
   shortName: string;
-  /** 地区（機構の公式区分） */
+  /** 地区（機構公式8地区区分） */
   region: string;
   /** 都道府県 */
   prefecture: string;
   /** 学科リスト */
   departments: Department[];
   /**
-   * 旧カリキュラムが適用される最終入学年度
-   * 例: 2021 → 2021年度以前に入学した学生は legacyDepartments を参照
+   * 旧カリキュラムの最終入学年度
+   * この値以前に入学した学生は era:'legacy' の学科に所属
+   * 例: 2021 → 2021年度以前入学 = 旧課程
    */
   legacyCutoffYear?: number;
-  /** マルチキャンパス校の場合のキャンパス名 */
+  /** マルチキャンパス校のキャンパス名 */
   campuses?: string[];
 }
 
-// -----------------------------------------------------------------------
+// ─────────────────────────────────────────────
 // ユーティリティ関数
-// -----------------------------------------------------------------------
+// ─────────────────────────────────────────────
 
-/** 全地区名を重複なしで返す */
+/** 全地区名（重複なし） */
 export function getAllRegions(): string[] {
   return [...new Set(KOSEN_SCHOOLS.map((s) => s.region))];
 }
 
-/** 指定地区の学校一覧を返す */
+/** 地区で学校を絞り込む */
 export function getSchoolsByRegion(region: string): KosenSchool[] {
   return KOSEN_SCHOOLS.filter((s) => s.region === region);
 }
 
-/** IDで学校を検索 */
+/** ID で学校を検索 */
 export function getSchoolById(id: string): KosenSchool | undefined {
   return KOSEN_SCHOOLS.find((s) => s.id === id);
 }
 
-/** 名前で学校を検索 */
+/** 名前（正式・通称）で学校を検索 */
 export function getSchoolByName(name: string): KosenSchool | undefined {
   return KOSEN_SCHOOLS.find((s) => s.name === name || s.shortName === name);
 }
 
 /**
- * 指定年度に入学した学生向けの学科リストを返す
- * @param school 対象校
- * @param entryYear 入学年度（例: 2024）
+ * 学科名の文字列配列を返す（後方互換ヘルパー）
+ * Onboarding などで文字列として扱う場合に使う
  */
-export function getDepartmentsForYear(
-  school: KosenSchool,
-  entryYear: number
-): Department[] {
-  if (!school.legacyCutoffYear) {
-    // 区分なし → 全学科を返す
-    return school.departments;
-  }
-
-  if (entryYear <= school.legacyCutoffYear) {
-    // 旧カリキュラム
-    return school.departments.filter(
-      (d) => d.era === 'legacy' || d.era === undefined
-    );
-  } else {
-    // 新カリキュラム
-    return school.departments.filter(
-      (d) => d.era === 'current' || d.era === undefined
-    );
-  }
+export function getDepartmentNames(school: KosenSchool): string[] {
+  return school.departments.map((d) => d.name);
 }
 
 /**
- * UI表示用の学科名一覧を返す（label があれば label、なければ name）
+ * UI 表示用の学科情報を返す
+ * <option value={item.value}>{item.label}</option> として使用
  */
 export function getDepartmentDisplayNames(school: KosenSchool): {
   value: string;
@@ -131,14 +102,30 @@ export function getDepartmentDisplayNames(school: KosenSchool): {
   }));
 }
 
-// -----------------------------------------------------------------------
-// 学校データ（全51校）
-// -----------------------------------------------------------------------
+/**
+ * 入学年度に応じた学科リストを返す
+ * @param school 対象校
+ * @param entryYear 入学年度（西暦）
+ */
+export function getDepartmentsForYear(
+  school: KosenSchool,
+  entryYear: number
+): Department[] {
+  if (!school.legacyCutoffYear) return school.departments;
+  if (entryYear <= school.legacyCutoffYear) {
+    return school.departments.filter((d) => d.era === 'legacy' || !d.era);
+  }
+  return school.departments.filter((d) => d.era === 'current' || !d.era);
+}
+
+// ─────────────────────────────────────────────
+// 学校データ（全 51 校）
+// ─────────────────────────────────────────────
 
 export const KOSEN_SCHOOLS: KosenSchool[] = [
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 北海道地区（4校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'hakodate',
     syllabusId: '01',
@@ -199,9 +186,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 東北地区（6校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'hachinohe',
     syllabusId: '05',
@@ -238,13 +225,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     shortName: '仙台高専',
     region: '東北',
     prefecture: '宮城県',
-    campuses: ['名取キャンパス（旧・宮城工業高専）', '広瀬キャンパス（旧・仙台電波高専）'],
+    campuses: ['名取キャンパス', '広瀬キャンパス'],
     departments: [
-      // 名取キャンパス
       { name: '機械工学科', note: '名取キャンパス' },
       { name: '建築デザイン学科', note: '名取キャンパス' },
       { name: '総合科学科', note: '名取キャンパス' },
-      // 広瀬キャンパス
       { name: '情報システム工学科', note: '広瀬キャンパス' },
       { name: 'コミュニケーション情報学科', note: '広瀬キャンパス' },
       { name: '電子工学科', note: '広瀬キャンパス' },
@@ -275,7 +260,7 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
       { name: '機械工学科' },
       { name: '電気電子工学科' },
       { name: '情報工学科' },
-      { name: ' 創造工学科' },
+      { name: '創造工学科' },
     ],
   },
   {
@@ -294,9 +279,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 関東信越地区（7校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'ibaraki',
     syllabusId: '11',
@@ -388,9 +373,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ------------------------------------------------------------------
-  // 長野工業高等専門学校（最重要校 — 新旧学科両対応）
-  // ------------------------------------------------------------------
+  // ──────────────────────────────────────────
+  // ★ 長野工業高等専門学校
+  //   令和4年度（2022年度）に学科改組
+  //   2021年度以前入学 → 旧5学科 (era:'legacy')
+  //   2022年度以降入学 → 工学科1学科3系 (era:'current')
+  // ──────────────────────────────────────────
   {
     id: 'nagano',
     syllabusId: '20',
@@ -398,38 +386,34 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     shortName: '長野高専',
     region: '関東信越',
     prefecture: '長野県',
-    /**
-     * 令和3年度（2021年度）を最終入学年度とする旧5学科カリキュラム
-     * 令和4年度（2022年度）以降は工学科1学科3系へ再編
-     */
     legacyCutoffYear: 2021,
     departments: [
-      // ---- 令和4年度（2022年度）以降の入学生 ----
+      // ─── 令和4年度以降（新課程） ────────────
       {
         name: '工学科',
-        label: '工学科（1年次・共通）',
-        note: '1年次は全員「工学科」として学ぶ。2年次進級時に系を選択。',
+        label: '工学科（1年次・全系共通）',
+        note: '1年次は全員工学科として学ぶ。2年次進級時に系を選択。',
         era: 'current',
       },
       {
         name: '情報エレクトロニクス系',
         label: '情報エレクトロニクス系（IE系）',
-        note: '2年次以降に選択 — 情報・電気・電子分野',
+        note: '2年次以降 / 情報・電気・電子分野',
         era: 'current',
       },
       {
         name: '機械ロボティクス系',
         label: '機械ロボティクス系（MR系）',
-        note: '2年次以降に選択 — 機械・ロボット分野',
+        note: '2年次以降 / 機械・ロボット分野',
         era: 'current',
       },
       {
         name: '都市デザイン系',
         label: '都市デザイン系（CE系）',
-        note: '2年次以降に選択 — 土木・建築・環境分野',
+        note: '2年次以降 / 土木・建築・環境分野',
         era: 'current',
       },
-      // ---- 令和3年度（2021年度）以前の入学生（旧5学科） ----
+      // ─── 令和3年度以前（旧5学科） ────────────
       {
         name: '機械工学科',
         label: '機械工学科（令和3年度以前入学）',
@@ -458,9 +442,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 東海北陸地区（8校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'toyama',
     syllabusId: '21',
@@ -468,15 +452,13 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     shortName: '富山高専',
     region: '東海北陸',
     prefecture: '富山県',
-    campuses: ['本郷キャンパス（旧・富山工業高専）', '射水キャンパス（旧・富山商船高専）'],
+    campuses: ['本郷キャンパス', '射水キャンパス'],
     departments: [
-      // 本郷キャンパス
       { name: '機械システム工学科', note: '本郷キャンパス' },
       { name: '電気制御システム工学科', note: '本郷キャンパス' },
       { name: '情報デザイン学科', note: '本郷キャンパス' },
       { name: '物質化学工学科', note: '本郷キャンパス' },
       { name: '環境都市工学科', note: '本郷キャンパス' },
-      // 射水キャンパス
       { name: '商船学科', note: '射水キャンパス' },
       { name: '電子情報工学科', note: '射水キャンパス' },
       { name: '産業システム工学科', note: '射水キャンパス' },
@@ -589,9 +571,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 近畿地区（4校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'maizuru',
     syllabusId: '29',
@@ -651,9 +633,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 中国地区（8校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'yonago',
     syllabusId: '33',
@@ -695,7 +677,6 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
       { name: '機械工学科' },
       { name: '電気電子工学科' },
       { name: '情報工学科' },
-      { name: '電子・情報システム工学科' },
       { name: '総合理工学科（建設系）' },
       { name: '総合理工学科（生物・化学系）' },
     ],
@@ -770,9 +751,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 四国地区（5校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'anan',
     syllabusId: '41',
@@ -795,14 +776,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     shortName: '香川高専',
     region: '四国',
     prefecture: '香川県',
-    campuses: ['高松キャンパス（旧・高松工業高専）', '詫間キャンパス（旧・詫間電波高専）'],
+    campuses: ['高松キャンパス', '詫間キャンパス'],
     departments: [
-      // 高松キャンパス
       { name: '機械電子工学科', note: '高松キャンパス' },
       { name: '電気情報工学科', note: '高松キャンパス' },
       { name: '建設環境工学科', note: '高松キャンパス' },
       { name: '創造工学科', note: '高松キャンパス' },
-      // 詫間キャンパス
       { name: '情報工学科', note: '詫間キャンパス' },
       { name: '通信ネットワーク工学科', note: '詫間キャンパス' },
     ],
@@ -849,9 +828,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 
-  // ====================================================================
+  // ══════════════════════════════════════════
   // 九州・沖縄地区（9校）
-  // ====================================================================
+  // ══════════════════════════════════════════
   {
     id: 'kurume',
     syllabusId: '46',
@@ -917,13 +896,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     shortName: '熊本高専',
     region: '九州・沖縄',
     prefecture: '熊本県',
-    campuses: ['熊本キャンパス（旧・熊本電波高専）', '八代キャンパス（旧・八代工業高専）'],
+    campuses: ['熊本キャンパス', '八代キャンパス'],
     departments: [
-      // 熊本キャンパス
       { name: '情報通信エレクトロニクス工学科', note: '熊本キャンパス' },
       { name: '知能情報工学科', note: '熊本キャンパス' },
       { name: '生物化学システム工学科', note: '熊本キャンパス' },
-      // 八代キャンパス
       { name: '機械知能システム工学科', note: '八代キャンパス' },
       { name: '電気情報工学科', note: '八代キャンパス' },
       { name: '建築社会デザイン工学科', note: '八代キャンパス' },
@@ -989,13 +966,3 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     ],
   },
 ];
-
-// -----------------------------------------------------------------------
-// 後方互換性のためのヘルパー（旧 getSchoolByName と同じシグネチャ）
-// -----------------------------------------------------------------------
-
-/** @deprecated getSchoolById または getSchoolByName を使用してください */
-export function getSchoolDepartments(schoolName: string): string[] {
-  const school = getSchoolByName(schoolName);
-  return school?.departments.map((d) => d.name) ?? [];
-}
