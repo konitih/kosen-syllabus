@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Check, ChevronRight, Book, Loader, AlertCircle } from 'lucide-react';
-import { syllabusFetcher } from '@/lib/syllabusFetcher';
 import { getAllRegions, getSchoolsByRegion, Department } from '@/lib/kosenList';
 import { processInChunks } from '@/lib/chunkedProcessor';
 
@@ -119,16 +118,17 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       setCurrentProgress({ current: 0, total: syllabusUrls.length });
 
       if (syllabusUrls.length === 0) {
+        // ─── 修正: サンプルデータへのフォールバックを廃止 ───────────────────
+        // URLが0件の場合はエラーを表示して終了（国語・数学・英語 等を出さない）
+        const errorDetail = urlData.error
+          ? `詳細: ${urlData.error}`
+          : `school_id=${availableSchools.find((s) => s.id === selectedSchoolId)?.syllabusId}, ` +
+            `department="${schoolInfo.department}", year=${schoolInfo.academicYear}`;
         toast({
-          title: '注意',
-          description: 'シラバスURLが見つかりませんでした',
+          title: 'シラバスURLが見つかりません',
+          description: `取得対象が0件でした。${errorDetail}`,
           variant: 'destructive',
         });
-        const defaultSubjects = syllabusFetcher.createDefaultSubjects(
-          schoolInfo.grade,
-          schoolInfo.semester
-        );
-        setFetchedSubjects(defaultSubjects);
         setProgressStage('idle');
         setIsLoading(false);
         return;
@@ -181,14 +181,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       if (newSubjects.length === 0) {
-        const defaultSubjects = syllabusFetcher.createDefaultSubjects(
-          schoolInfo.grade,
-          schoolInfo.semester
-        );
-        setFetchedSubjects(defaultSubjects);
+        // ─── 修正: サンプルデータへのフォールバックを廃止 ───────────────────
+        // 失敗URLの詳細を表示してリトライを促す
         toast({
-          title: '警告',
-          description: 'シラバス取得に失敗しました。デフォルト科目を使用します。',
+          title: 'シラバス解析に失敗しました',
+          description: `${syllabusUrls.length}件を処理しましたが科目を抽出できませんでした。` +
+            `ページ構造が変わった可能性があります。`,
           variant: 'destructive',
         });
       } else {
@@ -202,13 +200,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       console.error('[v0] Syllabus fetch error:', error);
       toast({
         title: 'エラー',
-        description: 'シラバスの取得に失敗しました',
+        description: `シラバスの取得に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
+        variant: 'destructive',
       });
-      const defaultSubjects = syllabusFetcher.createDefaultSubjects(
-        schoolInfo.grade,
-        schoolInfo.semester
-      );
-      setFetchedSubjects(defaultSubjects);
+      // ─── 修正: サンプルデータへのフォールバックを廃止 ───────────────────
+      // エラーをそのまま表示し、ユーザーに再試行を促す
     } finally {
       setIsLoading(false);
       setProgressStage('idle');

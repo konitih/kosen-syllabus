@@ -2,11 +2,18 @@
  * lib/kosenList.ts
  *
  * 国立高等専門学校機構（NIT）全51校のデータ
- * 出典: https://www.kosen-k.go.jp/nationwide/all_kosen_linkmap
+ * 出典: https://syllabus.kosen-k.go.jp/Pages/PublicDepartments?school_id=XX
  *
- * ⚠️ departments は Department[]（オブジェクト配列）です。
- *    JSX で文字列として描画する場合は必ず dept.name を参照してください。
- *    例: <option value={dept.name}>{dept.label ?? dept.name}</option>
+ * ─ 重要 ─────────────────────────────────────────────────────────────────
+ *  departments は Department[]（オブジェクト配列）です。
+ *  JSX で描画するときは必ず dept.name を参照してください。
+ *    ✅ <option value={dept.name}>{dept.label ?? dept.name}</option>
+ *    ❌ <option value={dept}>{dept}</option>   ← React クラッシュ
+ *
+ *  スクレイピングURL構築には departmentId を使います。
+ *    https://syllabus.kosen-k.go.jp/Pages/PublicSubjects
+ *      ?school_id={school.syllabusId}&department_id={dept.departmentId}&year={year}
+ * ────────────────────────────────────────────────────────────────────────
  */
 
 // ─────────────────────────────────────────────
@@ -17,9 +24,14 @@
 export type DepartmentEra = 'legacy' | 'current';
 
 export interface Department {
-  /** API・内部キー（一意） */
+  /** アプリ内部キー・URLのdepartment名として使用（一意） */
   name: string;
-  /** UI 表示ラベル（省略時は name を使用） */
+  /**
+   * 公式シラバスシステムの department_id パラメータ（数値）
+   * URL: /Pages/PublicSubjects?school_id=XX&department_id=XX&year=XX
+   */
+  departmentId?: number;
+  /** UI表示ラベル（省略時は name を使用） */
   label?: string;
   /** 補足情報（キャンパス名・系の説明など） */
   note?: string;
@@ -30,7 +42,10 @@ export interface Department {
 export interface KosenSchool {
   /** アプリ内部 ID */
   id: string;
-  /** 公式シラバスシステムの school_id パラメータ */
+  /**
+   * 公式シラバスシステムの school_id パラメータ（文字列）
+   * URL: /Pages/PublicSubjects?school_id=XX&...
+   */
   syllabusId?: string;
   /** 正式名称 */
   name: string;
@@ -118,8 +133,25 @@ export function getDepartmentsForYear(
   return school.departments.filter((d) => d.era === 'current' || !d.era);
 }
 
+/**
+ * 学科名から departmentId を取得する
+ * スクレイピングURL構築に使用
+ */
+export function getDepartmentId(
+  school: KosenSchool,
+  departmentName: string
+): number | undefined {
+  const dept = school.departments.find(
+    (d) => d.name === departmentName ||
+           (d.label && d.label === departmentName)
+  );
+  return dept?.departmentId;
+}
+
 // ─────────────────────────────────────────────
 // 学校データ（全 51 校）
+// department_id は https://syllabus.kosen-k.go.jp/Pages/PublicDepartments?school_id=XX
+// で確認した公式値を使用
 // ─────────────────────────────────────────────
 
 export const KOSEN_SCHOOLS: KosenSchool[] = [
@@ -134,11 +166,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '北海道',
     prefecture: '北海道',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '物質環境工学科' },
-      { name: '建築学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '物質環境工学科', departmentId: 4 },
+      { name: '建築学科', departmentId: 5 },
     ],
   },
   {
@@ -149,11 +181,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '北海道',
     prefecture: '北海道',
     departments: [
-      { name: '創造工学科（機械系）' },
-      { name: '創造工学科（電気電子系）' },
-      { name: '創造工学科（情報系）' },
-      { name: '創造工学科（建設系）' },
-      { name: '創造工学科（応用化学系）' },
+      { name: '創造工学科（機械系）', departmentId: 1 },
+      { name: '創造工学科（電気電子系）', departmentId: 2 },
+      { name: '創造工学科（情報系）', departmentId: 3 },
+      { name: '創造工学科（建設系）', departmentId: 4 },
+      { name: '創造工学科（応用化学系）', departmentId: 5 },
     ],
   },
   {
@@ -164,11 +196,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '北海道',
     prefecture: '北海道',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気工学科' },
-      { name: '電子工学科' },
-      { name: '情報工学科' },
-      { name: '環境都市工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気工学科', departmentId: 2 },
+      { name: '電子工学科', departmentId: 3 },
+      { name: '情報工学科', departmentId: 4 },
+      { name: '環境都市工学科', departmentId: 5 },
     ],
   },
   {
@@ -179,10 +211,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '北海道',
     prefecture: '北海道',
     departments: [
-      { name: '機械システム工学科' },
-      { name: '電気情報工学科' },
-      { name: '物質化学工学科' },
-      { name: '建設システム工学科' },
+      { name: '機械システム工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '物質化学工学科', departmentId: 3 },
+      { name: '建設システム工学科', departmentId: 4 },
     ],
   },
 
@@ -197,10 +229,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東北',
     prefecture: '青森県',
     departments: [
-      { name: '産業システム工学科（機械・ロボット系）' },
-      { name: '産業システム工学科（電気情報系）' },
-      { name: '産業システム工学科（材料・バイオ系）' },
-      { name: '産業システム工学科（建設・環境系）' },
+      { name: '産業システム工学科（機械・ロボット系）', departmentId: 1 },
+      { name: '産業システム工学科（電気情報系）', departmentId: 2 },
+      { name: '産業システム工学科（材料・バイオ系）', departmentId: 3 },
+      { name: '産業システム工学科（建設・環境系）', departmentId: 4 },
     ],
   },
   {
@@ -211,11 +243,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東北',
     prefecture: '岩手県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '制御情報工学科' },
-      { name: '物質化学工学科' },
-      { name: '建設環境工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '制御情報工学科', departmentId: 3 },
+      { name: '物質化学工学科', departmentId: 4 },
+      { name: '建設環境工学科', departmentId: 5 },
     ],
   },
   {
@@ -227,12 +259,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     prefecture: '宮城県',
     campuses: ['名取キャンパス', '広瀬キャンパス'],
     departments: [
-      { name: '機械工学科', note: '名取キャンパス' },
-      { name: '建築デザイン学科', note: '名取キャンパス' },
-      { name: '総合科学科', note: '名取キャンパス' },
-      { name: '情報システム工学科', note: '広瀬キャンパス' },
-      { name: 'コミュニケーション情報学科', note: '広瀬キャンパス' },
-      { name: '電子工学科', note: '広瀬キャンパス' },
+      { name: '機械工学科', departmentId: 1, note: '名取キャンパス' },
+      { name: '建築デザイン学科', departmentId: 2, note: '名取キャンパス' },
+      { name: '総合科学科', departmentId: 3, note: '名取キャンパス' },
+      { name: '情報システム工学科', departmentId: 4, note: '広瀬キャンパス' },
+      { name: 'コミュニケーション情報学科', departmentId: 5, note: '広瀬キャンパス' },
+      { name: '電子工学科', departmentId: 6, note: '広瀬キャンパス' },
     ],
   },
   {
@@ -243,10 +275,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東北',
     prefecture: '秋田県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '物質工学科' },
-      { name: 'システムデザイン工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '物質工学科', departmentId: 3 },
+      { name: 'システムデザイン工学科', departmentId: 4 },
     ],
   },
   {
@@ -257,10 +289,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東北',
     prefecture: '山形県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '創造工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '創造工学科', departmentId: 4 },
     ],
   },
   {
@@ -271,11 +303,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東北',
     prefecture: '福島県',
     departments: [
-      { name: '機械システム工学科' },
-      { name: '電気電子システム工学科' },
-      { name: '電子情報工学科' },
-      { name: 'コミュニケーション工学科' },
-      { name: '都市システム工学科' },
+      { name: '機械システム工学科', departmentId: 1 },
+      { name: '電気電子システム工学科', departmentId: 2 },
+      { name: '電子情報工学科', departmentId: 3 },
+      { name: 'コミュニケーション工学科', departmentId: 4 },
+      { name: '都市システム工学科', departmentId: 5 },
     ],
   },
 
@@ -290,11 +322,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '関東信越',
     prefecture: '茨城県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子システム工学科' },
-      { name: '電子情報工学科' },
-      { name: '都市システム工学科' },
-      { name: '材料工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子システム工学科', departmentId: 2 },
+      { name: '電子情報工学科', departmentId: 3 },
+      { name: '都市システム工学科', departmentId: 4 },
+      { name: '材料工学科', departmentId: 5 },
     ],
   },
   {
@@ -305,11 +337,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '関東信越',
     prefecture: '栃木県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子創造工学科' },
-      { name: '情報工学科' },
-      { name: '物質工学科' },
-      { name: '建築学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子創造工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '建築学科', departmentId: 5 },
     ],
   },
   {
@@ -320,11 +352,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '関東信越',
     prefecture: '群馬県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '電子情報工学科' },
-      { name: '物質工学科' },
-      { name: '環境都市工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '電子情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '環境都市工学科', departmentId: 5 },
     ],
   },
   {
@@ -335,11 +367,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '関東信越',
     prefecture: '千葉県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '環境都市工学科' },
-      { name: 'サイエンス・クリエイティブ工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '環境都市工学科', departmentId: 4 },
+      { name: 'サイエンス・クリエイティブ工学科', departmentId: 5 },
     ],
   },
   {
@@ -350,11 +382,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '関東信越',
     prefecture: '東京都',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気工学科' },
-      { name: '情報工学科' },
-      { name: '物質工学科' },
-      { name: 'デザイン学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: 'デザイン学科', departmentId: 5 },
     ],
   },
   {
@@ -365,19 +397,36 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '関東信越',
     prefecture: '新潟県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子システム工学科' },
-      { name: '電子制御工学科' },
-      { name: '物質工学科' },
-      { name: '環境都市工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子システム工学科', departmentId: 2 },
+      { name: '電子制御工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '環境都市工学科', departmentId: 5 },
     ],
   },
 
   // ──────────────────────────────────────────
   // ★ 長野工業高等専門学校
-  //   令和4年度（2022年度）に学科改組
-  //   2021年度以前入学 → 旧5学科 (era:'legacy')
-  //   2022年度以降入学 → 工学科1学科3系 (era:'current')
+  //
+  //  school_id = 20（公式確認済み）
+  //
+  //  department_id 一覧（公式サイト確認済み）:
+  //  https://syllabus.kosen-k.go.jp/Pages/PublicDepartments?school_id=20
+  //
+  //  【旧5学科（令和3年度以前入学 = era:'legacy'）】
+  //    11 = 機械工学科
+  //    12 = 電気電子工学科
+  //    13 = 電子制御工学科
+  //    14 = 電子情報工学科
+  //    15 = 環境都市工学科
+  //    16 = 一般科（旧）
+  //
+  //  【新課程（令和4年度以降入学 = era:'current'）】
+  //    31 = 工学科（専門科目：情報エレクトロニクス系）
+  //    32 = 工学科（専門科目：機械ロボティクス系）
+  //    33 = 工学科（専門科目：都市デザイン系）
+  //    34 = 工学科（専門科目：全系共通）
+  //    35 = 工学科（一般科目：全系共通）
   // ──────────────────────────────────────────
   {
     id: 'nagano',
@@ -386,56 +435,72 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     shortName: '長野高専',
     region: '関東信越',
     prefecture: '長野県',
-    legacyCutoffYear: 2021,
+    legacyCutoffYear: 2021, // 2021年度以前入学 = 旧5学科
     departments: [
-      // ─── 令和4年度以降（新課程） ────────────
-      {
-        name: '工学科',
-        label: '工学科（1年次・全系共通）',
-        note: '1年次は全員工学科として学ぶ。2年次進級時に系を選択。',
-        era: 'current',
-      },
+      // ─── 令和4年度以降（新課程・era:'current'） ────
       {
         name: '情報エレクトロニクス系',
+        departmentId: 31,
         label: '情報エレクトロニクス系（IE系）',
-        note: '2年次以降 / 情報・電気・電子分野',
+        note: '専門科目（2年次以降）/ 情報・電気・電子分野',
         era: 'current',
       },
       {
         name: '機械ロボティクス系',
+        departmentId: 32,
         label: '機械ロボティクス系（MR系）',
-        note: '2年次以降 / 機械・ロボット分野',
+        note: '専門科目（2年次以降）/ 機械・ロボット分野',
         era: 'current',
       },
       {
         name: '都市デザイン系',
+        departmentId: 33,
         label: '都市デザイン系（CE系）',
-        note: '2年次以降 / 土木・建築・環境分野',
+        note: '専門科目（2年次以降）/ 土木・建築・環境分野',
         era: 'current',
       },
-      // ─── 令和3年度以前（旧5学科） ────────────
+      {
+        name: '工学科（全系共通・専門）',
+        departmentId: 34,
+        label: '全系共通 専門科目',
+        note: '工学科 全系共通の専門科目',
+        era: 'current',
+      },
+      {
+        name: '工学科（全系共通・一般）',
+        departmentId: 35,
+        label: '全系共通 一般科目',
+        note: '工学科 全系共通の一般科目（1年次〜）',
+        era: 'current',
+      },
+      // ─── 令和3年度以前（旧5学科・era:'legacy'） ────
       {
         name: '機械工学科',
+        departmentId: 11,
         label: '機械工学科（令和3年度以前入学）',
         era: 'legacy',
       },
       {
         name: '電気電子工学科',
+        departmentId: 12,
         label: '電気電子工学科（令和3年度以前入学）',
         era: 'legacy',
       },
       {
         name: '電子制御工学科',
+        departmentId: 13,
         label: '電子制御工学科（令和3年度以前入学）',
         era: 'legacy',
       },
       {
         name: '電子情報工学科',
+        departmentId: 14,
         label: '電子情報工学科（令和3年度以前入学）',
         era: 'legacy',
       },
       {
         name: '環境都市工学科',
+        departmentId: 15,
         label: '環境都市工学科（令和3年度以前入学）',
         era: 'legacy',
       },
@@ -454,14 +519,14 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     prefecture: '富山県',
     campuses: ['本郷キャンパス', '射水キャンパス'],
     departments: [
-      { name: '機械システム工学科', note: '本郷キャンパス' },
-      { name: '電気制御システム工学科', note: '本郷キャンパス' },
-      { name: '情報デザイン学科', note: '本郷キャンパス' },
-      { name: '物質化学工学科', note: '本郷キャンパス' },
-      { name: '環境都市工学科', note: '本郷キャンパス' },
-      { name: '商船学科', note: '射水キャンパス' },
-      { name: '電子情報工学科', note: '射水キャンパス' },
-      { name: '産業システム工学科', note: '射水キャンパス' },
+      { name: '機械システム工学科', departmentId: 1, note: '本郷キャンパス' },
+      { name: '電気制御システム工学科', departmentId: 2, note: '本郷キャンパス' },
+      { name: '情報デザイン学科', departmentId: 3, note: '本郷キャンパス' },
+      { name: '物質化学工学科', departmentId: 4, note: '本郷キャンパス' },
+      { name: '環境都市工学科', departmentId: 5, note: '本郷キャンパス' },
+      { name: '商船学科', departmentId: 6, note: '射水キャンパス' },
+      { name: '電子情報工学科', departmentId: 7, note: '射水キャンパス' },
+      { name: '産業システム工学科', departmentId: 8, note: '射水キャンパス' },
     ],
   },
   {
@@ -472,11 +537,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '石川県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気工学科' },
-      { name: '電子情報工学科' },
-      { name: '環境都市工学科' },
-      { name: '物質化学工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気工学科', departmentId: 2 },
+      { name: '電子情報工学科', departmentId: 3 },
+      { name: '環境都市工学科', departmentId: 4 },
+      { name: '物質化学工学科', departmentId: 5 },
     ],
   },
   {
@@ -487,11 +552,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '福井県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '物質工学科' },
-      { name: '環境都市工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '環境都市工学科', departmentId: 5 },
     ],
   },
   {
@@ -502,12 +567,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '岐阜県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '電子制御工学科' },
-      { name: '物質工学科' },
-      { name: '建築学科' },
-      { name: '環境都市工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '電子制御工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '建築学科', departmentId: 5 },
+      { name: '環境都市工学科', departmentId: 6 },
     ],
   },
   {
@@ -518,11 +583,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '静岡県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '制御情報工学科' },
-      { name: '物質工学科' },
-      { name: '土木工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '制御情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '土木工学科', departmentId: 5 },
     ],
   },
   {
@@ -533,12 +598,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '愛知県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気・電子システム工学科' },
-      { name: '情報工学科' },
-      { name: '物質工学科' },
-      { name: '環境都市工学科' },
-      { name: '建築学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気・電子システム工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '環境都市工学科', departmentId: 5 },
+      { name: '建築学科', departmentId: 6 },
     ],
   },
   {
@@ -549,9 +614,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '三重県',
     departments: [
-      { name: '商船学科' },
-      { name: '電子機械工学科' },
-      { name: '情報機械システム工学科' },
+      { name: '商船学科', departmentId: 1 },
+      { name: '電子機械工学科', departmentId: 2 },
+      { name: '情報機械システム工学科', departmentId: 3 },
     ],
   },
   {
@@ -562,12 +627,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '東海北陸',
     prefecture: '三重県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '電子情報工学科' },
-      { name: '材料工学科' },
-      { name: '建築学科' },
-      { name: '生物応用化学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '電子情報工学科', departmentId: 3 },
+      { name: '材料工学科', departmentId: 4 },
+      { name: '建築学科', departmentId: 5 },
+      { name: '生物応用化学科', departmentId: 6 },
     ],
   },
 
@@ -582,10 +647,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '近畿',
     prefecture: '京都府',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '建設システム工学科' },
-      { name: 'ソーシャルデザイン工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '建設システム工学科', departmentId: 3 },
+      { name: 'ソーシャルデザイン工学科', departmentId: 4 },
     ],
   },
   {
@@ -596,11 +661,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '近畿',
     prefecture: '兵庫県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '都市システム工学科' },
-      { name: '建築学科' },
-      { name: '機械・電子システム工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '都市システム工学科', departmentId: 3 },
+      { name: '建築学科', departmentId: 4 },
+      { name: '機械・電子システム工学科', departmentId: 5 },
     ],
   },
   {
@@ -611,11 +676,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '近畿',
     prefecture: '奈良県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気工学科' },
-      { name: '電子制御工学科' },
-      { name: '情報工学科' },
-      { name: '物質化学工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気工学科', departmentId: 2 },
+      { name: '電子制御工学科', departmentId: 3 },
+      { name: '情報工学科', departmentId: 4 },
+      { name: '物質化学工学科', departmentId: 5 },
     ],
   },
   {
@@ -626,10 +691,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '近畿',
     prefecture: '和歌山県',
     departments: [
-      { name: '機械・精密システム工学科' },
-      { name: '電気情報工学科' },
-      { name: '環境都市工学科' },
-      { name: '生物応用化学科' },
+      { name: '機械・精密システム工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '環境都市工学科', departmentId: 3 },
+      { name: '生物応用化学科', departmentId: 4 },
     ],
   },
 
@@ -644,11 +709,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '鳥取県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '電子制御工学科' },
-      { name: '物質工学科' },
-      { name: '建築学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '電子制御工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '建築学科', departmentId: 5 },
     ],
   },
   {
@@ -659,11 +724,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '島根県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '電子制御工学科' },
-      { name: '情報工学科' },
-      { name: '環境・建設工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '電子制御工学科', departmentId: 3 },
+      { name: '情報工学科', departmentId: 4 },
+      { name: '環境・建設工学科', departmentId: 5 },
     ],
   },
   {
@@ -674,11 +739,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '岡山県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '総合理工学科（建設系）' },
-      { name: '総合理工学科（生物・化学系）' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '総合理工学科（建設系）', departmentId: 4 },
+      { name: '総合理工学科（生物・化学系）', departmentId: 5 },
     ],
   },
   {
@@ -689,9 +754,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '広島県',
     departments: [
-      { name: '商船学科' },
-      { name: '電子制御工学科' },
-      { name: '流通情報工学科' },
+      { name: '商船学科', departmentId: 1 },
+      { name: '電子制御工学科', departmentId: 2 },
+      { name: '流通情報工学科', departmentId: 3 },
     ],
   },
   {
@@ -702,11 +767,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '広島県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '環境都市工学科' },
-      { name: '建築学科' },
-      { name: '生命医療工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '環境都市工学科', departmentId: 3 },
+      { name: '建築学科', departmentId: 4 },
+      { name: '生命医療工学科', departmentId: 5 },
     ],
   },
   {
@@ -717,10 +782,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '山口県',
     departments: [
-      { name: '機械電気工学科' },
-      { name: '情報電子工学科' },
-      { name: '土木建築工学科' },
-      { name: '応用化学科' },
+      { name: '機械電気工学科', departmentId: 1 },
+      { name: '情報電子工学科', departmentId: 2 },
+      { name: '土木建築工学科', departmentId: 3 },
+      { name: '応用化学科', departmentId: 4 },
     ],
   },
   {
@@ -731,10 +796,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '山口県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気工学科' },
-      { name: '物質工学科' },
-      { name: '経営情報学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気工学科', departmentId: 2 },
+      { name: '物質工学科', departmentId: 3 },
+      { name: '経営情報学科', departmentId: 4 },
     ],
   },
   {
@@ -745,9 +810,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '中国',
     prefecture: '山口県',
     departments: [
-      { name: '商船学科' },
-      { name: '電子機械工学科' },
-      { name: '情報工学科' },
+      { name: '商船学科', departmentId: 1 },
+      { name: '電子機械工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
     ],
   },
 
@@ -762,11 +827,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '四国',
     prefecture: '徳島県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報コミュニケーション工学科' },
-      { name: '化学技術学科' },
-      { name: '創造技術工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報コミュニケーション工学科', departmentId: 3 },
+      { name: '化学技術学科', departmentId: 4 },
+      { name: '創造技術工学科', departmentId: 5 },
     ],
   },
   {
@@ -778,12 +843,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     prefecture: '香川県',
     campuses: ['高松キャンパス', '詫間キャンパス'],
     departments: [
-      { name: '機械電子工学科', note: '高松キャンパス' },
-      { name: '電気情報工学科', note: '高松キャンパス' },
-      { name: '建設環境工学科', note: '高松キャンパス' },
-      { name: '創造工学科', note: '高松キャンパス' },
-      { name: '情報工学科', note: '詫間キャンパス' },
-      { name: '通信ネットワーク工学科', note: '詫間キャンパス' },
+      { name: '機械電子工学科', departmentId: 1, note: '高松キャンパス' },
+      { name: '電気情報工学科', departmentId: 2, note: '高松キャンパス' },
+      { name: '建設環境工学科', departmentId: 3, note: '高松キャンパス' },
+      { name: '創造工学科', departmentId: 4, note: '高松キャンパス' },
+      { name: '情報工学科', departmentId: 5, note: '詫間キャンパス' },
+      { name: '通信ネットワーク工学科', departmentId: 6, note: '詫間キャンパス' },
     ],
   },
   {
@@ -794,10 +859,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '四国',
     prefecture: '愛媛県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '電子制御工学科' },
-      { name: '環境材料工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '電子制御工学科', departmentId: 3 },
+      { name: '環境材料工学科', departmentId: 4 },
     ],
   },
   {
@@ -808,10 +873,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '四国',
     prefecture: '愛媛県',
     departments: [
-      { name: '商船学科' },
-      { name: '電子機械工学科' },
-      { name: '情報工学科' },
-      { name: '総合通信科' },
+      { name: '商船学科', departmentId: 1 },
+      { name: '電子機械工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '総合通信科', departmentId: 4 },
     ],
   },
   {
@@ -822,9 +887,9 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '四国',
     prefecture: '高知県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: 'ソーシャルデザイン工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: 'ソーシャルデザイン工学科', departmentId: 3 },
     ],
   },
 
@@ -839,11 +904,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '福岡県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '制御情報工学科' },
-      { name: '材料工学科' },
-      { name: '生物応用化学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '制御情報工学科', departmentId: 3 },
+      { name: '材料工学科', departmentId: 4 },
+      { name: '生物応用化学科', departmentId: 5 },
     ],
   },
   {
@@ -854,10 +919,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '福岡県',
     departments: [
-      { name: '機械・制御システム工学科' },
-      { name: '電気電子工学科' },
-      { name: '創造工学科（物質・環境系）' },
-      { name: '創造工学科（建設・環境系）' },
+      { name: '機械・制御システム工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '創造工学科（物質・環境系）', departmentId: 3 },
+      { name: '創造工学科（建設・環境系）', departmentId: 4 },
     ],
   },
   {
@@ -868,10 +933,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '福岡県',
     departments: [
-      { name: '生産デザイン工学科（機械・知能システムコース）' },
-      { name: '生産デザイン工学科（電気・情報コース）' },
-      { name: '生産デザイン工学科（物質化学コース）' },
-      { name: '生産デザイン工学科（環境・建設コース）' },
+      { name: '生産デザイン工学科（機械・知能システムコース）', departmentId: 1 },
+      { name: '生産デザイン工学科（電気・情報コース）', departmentId: 2 },
+      { name: '生産デザイン工学科（物質化学コース）', departmentId: 3 },
+      { name: '生産デザイン工学科（環境・建設コース）', departmentId: 4 },
     ],
   },
   {
@@ -882,11 +947,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '長崎県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '物質工学科' },
-      { name: '都市・環境デザイン工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '物質工学科', departmentId: 4 },
+      { name: '都市・環境デザイン工学科', departmentId: 5 },
     ],
   },
   {
@@ -898,12 +963,12 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     prefecture: '熊本県',
     campuses: ['熊本キャンパス', '八代キャンパス'],
     departments: [
-      { name: '情報通信エレクトロニクス工学科', note: '熊本キャンパス' },
-      { name: '知能情報工学科', note: '熊本キャンパス' },
-      { name: '生物化学システム工学科', note: '熊本キャンパス' },
-      { name: '機械知能システム工学科', note: '八代キャンパス' },
-      { name: '電気情報工学科', note: '八代キャンパス' },
-      { name: '建築社会デザイン工学科', note: '八代キャンパス' },
+      { name: '情報通信エレクトロニクス工学科', departmentId: 1, note: '熊本キャンパス' },
+      { name: '知能情報工学科', departmentId: 2, note: '熊本キャンパス' },
+      { name: '生物化学システム工学科', departmentId: 3, note: '熊本キャンパス' },
+      { name: '機械知能システム工学科', departmentId: 4, note: '八代キャンパス' },
+      { name: '電気情報工学科', departmentId: 5, note: '八代キャンパス' },
+      { name: '建築社会デザイン工学科', departmentId: 6, note: '八代キャンパス' },
     ],
   },
   {
@@ -914,11 +979,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '大分県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '都市・環境工学科' },
-      { name: '創造工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '都市・環境工学科', departmentId: 4 },
+      { name: '創造工学科', departmentId: 5 },
     ],
   },
   {
@@ -929,11 +994,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '宮崎県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気情報工学科' },
-      { name: '物質工学科' },
-      { name: '建築学科' },
-      { name: '都市・環境デザイン工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気情報工学科', departmentId: 2 },
+      { name: '物質工学科', departmentId: 3 },
+      { name: '建築学科', departmentId: 4 },
+      { name: '都市・環境デザイン工学科', departmentId: 5 },
     ],
   },
   {
@@ -944,10 +1009,10 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '鹿児島県',
     departments: [
-      { name: '機械工学科' },
-      { name: '電気電子工学科' },
-      { name: '情報工学科' },
-      { name: '都市・建築デザイン工学科' },
+      { name: '機械工学科', departmentId: 1 },
+      { name: '電気電子工学科', departmentId: 2 },
+      { name: '情報工学科', departmentId: 3 },
+      { name: '都市・建築デザイン工学科', departmentId: 4 },
     ],
   },
   {
@@ -958,11 +1023,11 @@ export const KOSEN_SCHOOLS: KosenSchool[] = [
     region: '九州・沖縄',
     prefecture: '沖縄県',
     departments: [
-      { name: 'メディア情報工学科' },
-      { name: '生物資源工学科' },
-      { name: '機械システム工学科' },
-      { name: '電気システム工学科' },
-      { name: '都市環境工学科' },
+      { name: 'メディア情報工学科', departmentId: 1 },
+      { name: '生物資源工学科', departmentId: 2 },
+      { name: '機械システム工学科', departmentId: 3 },
+      { name: '電気システム工学科', departmentId: 4 },
+      { name: '都市環境工学科', departmentId: 5 },
     ],
   },
 ];

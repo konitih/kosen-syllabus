@@ -3,12 +3,15 @@ import { validateSyllabusDetail, syllabusDetailToSubject } from '@/lib/syllabusD
 import type { SyllabusDetail } from '@/lib/syllabusDetailExtractor';
 
 /**
- * Stage 2: 個別シラバス詳細スクレイピング
+ * app/api/syllabus/detail/route.ts
  *
- * 修正点:
- *  - NEXT_PUBLIC_FIRECRAWL_API_KEY → FIRECRAWL_API_KEY（サーバー専用）
- *  - Vercel timeout 対策: 25秒のタイムアウトを明示
- *  - 評価割合バリデーション強化（100%正規化）
+ * Stage 2: 個別シラバスページをスクレイピングして科目データを構造化
+ *
+ * ── 修正点 ──────────────────────────────────────────────────────────────
+ *  ✅ FIRECRAWL_API_KEY（サーバー専用環境変数）
+ *  ✅ markdown + html 両方のフォーマットを取得（精度向上）
+ *  ✅ 高専Webシラバスのページ構造に合わせたパーサー改善
+ * ────────────────────────────────────────────────────────────────────────
  */
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'syllabusUrl は必須です' }, { status: 400 });
     }
 
-    // サーバーサイド専用キー
+    // ✅ サーバーサイド専用キー（NEXT_PUBLIC_ を外した）
     const apiKey = process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -27,19 +30,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // URLバリデーション
+    // URL バリデーション
     try {
       new URL(syllabusUrl);
     } catch {
       return NextResponse.json({ error: '無効なURLです', url: syllabusUrl }, { status: 400 });
     }
 
-    // 年度バリデーション（未来年度を弾く）
+    // 年度バリデーション
     const currentYear = new Date().getFullYear();
     const validYear = Math.min(Number(academicYear) || currentYear, currentYear);
 
-    console.log(`[syllabus/detail] (${index ?? '?'}/${total ?? '?'}) Scraping: ${syllabusUrl}`);
+    console.log(`[detail] (${index ?? '?'}/${total ?? '?'}) Scraping: ${syllabusUrl}`);
 
+    // ✅ markdown + html の両方を取得して解析精度を上げる
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -48,9 +52,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         url: syllabusUrl,
-        formats: ['markdown'],
-        // waitFor はセレクタ文字列ではなくミリ秒数(number)を指定
-        // コンテンツが描画されるまで最大2秒待つ
+        formats: ['markdown', 'html'],
         waitFor: 2000,
         timeout: 25000,
       }),
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     if (!scrapeResponse.ok) {
       const errorText = await scrapeResponse.text();
-      console.error(`[syllabus/detail] FireCrawl error for ${syllabusUrl}:`, errorText);
+      console.error(`[detail] FireCrawl error for ${syllabusUrl}:`, errorText);
       return NextResponse.json(
         {
           success: false,
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scrapeData = await scrapeResponse.json();
-    const markdown = scrapeData.data?.markdown ?? scrapeData.markdown ?? '';
+    const markdown: string = scrapeData.data?.markdown ?? scrapeData.markdown ?? '';
 
     if (!markdown || markdown.trim().length < 50) {
       return NextResponse.json(
@@ -94,7 +96,7 @@ export async function POST(request: NextRequest) {
     const validation = validateSyllabusDetail(syllabusDetail);
 
     if (!validation.isValid) {
-      console.warn(`[syllabus/detail] Validation failed for ${syllabusUrl}:`, validation.errors);
+      console.warn(`[detail] Validation failed for ${syllabusUrl}:`, validation.errors);
       return NextResponse.json(
         {
           success: false,
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
       total,
     });
   } catch (error) {
-    console.error('[syllabus/detail] Unexpected error:', error);
+    console.error('[detail] Unexpected error:', error);
     return NextResponse.json(
       { error: '詳細スクレイピング処理でエラーが発生しました' },
       { status: 500 }
@@ -128,9 +130,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// -----------------------------------------------------------------------
-// Extraction helpers (長野高専 / 全高専共通フォーマット対応)
-// -----------------------------------------------------------------------
+// ─────────────────────────────────────────────
+// 抽出ヘルパー（高専Webシラバス形式対応）
+// ─────────────────────────────────────────────
 
 function extractSyllabusDetail(markdown: string, url: string): Partial<SyllabusDetail> {
   return {
@@ -146,18 +148,20 @@ function extractSyllabusDetail(markdown: string, url: string): Partial<SyllabusD
 
 function extractSubjectName(content: string, url: string): string {
   const patterns = [
+    // 高専Webシラバスでは <h1> または太字の科目名が最初に来ることが多い
+    /^#\s+(.+?)$/m,
     /科目名\s*[:：]\s*([^\n]+)/i,
     /授業科目名\s*[:：]\s*([^\n]+)/i,
     /Course\s+Name\s*[:：]\s*([^\n]+)/i,
-    /^#{1,3}\s+(?!#+)(.+)/m,
   ];
   for (const p of patterns) {
     const m = content.match(p);
     const name = m?.[1]?.trim();
     if (name && name.length > 0 && name.length < 80) return name;
   }
-  // URLから最後のセグメントをフォールバック
-  return decodeURIComponent(url.split('/').pop()?.replace(/[?#].*/, '') ?? 'Unknown');
+  // URLの subject_id からフォールバック
+  const urlParams = new URL(url).searchParams;
+  return urlParams.get('subject_id') ?? 'Unknown';
 }
 
 function extractInstructor(content: string): string {
@@ -165,6 +169,7 @@ function extractInstructor(content: string): string {
     /担当教員\s*[:：]\s*([^\n]+)/i,
     /担当者\s*[:：]\s*([^\n]+)/i,
     /Instructor\s*[:：]\s*([^\n]+)/i,
+    /教員名\s*[:：]\s*([^\n]+)/i,
   ];
   for (const p of patterns) {
     const m = content.match(p);
@@ -175,7 +180,11 @@ function extractInstructor(content: string): string {
 }
 
 function extractCredits(content: string): number {
-  const patterns = [/単位数\s*[:：]\s*(\d+)/i, /(\d+)\s*単位/i, /Credits?\s*[:：]\s*(\d+)/i];
+  const patterns = [
+    /単位数\s*[:：]\s*(\d+)/i,
+    /(\d+)\s*単位/i,
+    /Credits?\s*[:：]\s*(\d+)/i,
+  ];
   for (const p of patterns) {
     const m = content.match(p);
     if (m) {
@@ -191,7 +200,7 @@ function extractTerm(content: string): 'spring' | 'fall' | 'both' {
   const hasBack = /後期/.test(content);
   if (hasFront && hasBack) return 'both';
   if (hasBack) return 'fall';
-  return 'spring'; // デフォルトは前期
+  return 'spring';
 }
 
 function extractClassType(content: string): 'lecture' | 'practical' | 'experiment' {
@@ -239,7 +248,6 @@ function extractEvaluationCriteria(
     percentage,
   }));
 
-  // デフォルト（何も抽出できなかった場合）
   if (result.length === 0) {
     return [
       { name: '試験', percentage: 70 },
