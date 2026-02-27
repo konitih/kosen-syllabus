@@ -26,6 +26,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [progressStage, setProgressStage] = useState<'idle' | 'urls' | 'details'>('idle');
   const [currentProgress, setCurrentProgress] = useState({ current: 0, total: 0 });
   const [failedUrls, setFailedUrls] = useState<Array<{ url: string; reason: string }>>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({
     schoolName: '',
     department: '',
@@ -92,6 +93,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     setProgressStage('urls');
     setCurrentProgress({ current: 0, total: 0 });
     setFailedUrls([]);
+    setFetchError(null);
 
     try {
       // Stage 1: URL リスト取得
@@ -118,15 +120,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       setCurrentProgress({ current: 0, total: syllabusUrls.length });
 
       if (syllabusUrls.length === 0) {
-        // ─── 修正: サンプルデータへのフォールバックを廃止 ───────────────────
-        // URLが0件の場合はエラーを表示して終了（国語・数学・英語 等を出さない）
+        // サンプルデータへのフォールバックを廃止 — エラーを表示してリトライを促す
         const errorDetail = urlData.error
           ? `詳細: ${urlData.error}`
           : `school_id=${availableSchools.find((s) => s.id === selectedSchoolId)?.syllabusId}, ` +
             `department="${schoolInfo.department}", year=${schoolInfo.academicYear}`;
+        const msg = `シラバスURLが0件でした。${errorDetail}`;
+        setFetchError(msg);
         toast({
           title: 'シラバスURLが見つかりません',
-          description: `取得対象が0件でした。${errorDetail}`,
+          description: msg,
           variant: 'destructive',
         });
         setProgressStage('idle');
@@ -181,12 +184,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       if (newSubjects.length === 0) {
-        // ─── 修正: サンプルデータへのフォールバックを廃止 ───────────────────
-        // 失敗URLの詳細を表示してリトライを促す
+        // サンプルデータへのフォールバックを廃止 — 失敗件数を提示してリトライを促す
+        const msg =
+          `${syllabusUrls.length}件のURLを処理しましたが科目を抽出できませんでした。` +
+          `ページ構造が変わった可能性があります。`;
+        setFetchError(msg);
         toast({
           title: 'シラバス解析に失敗しました',
-          description: `${syllabusUrls.length}件を処理しましたが科目を抽出できませんでした。` +
-            `ページ構造が変わった可能性があります。`,
+          description: msg,
           variant: 'destructive',
         });
       } else {
@@ -198,13 +203,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       }
     } catch (error) {
       console.error('[v0] Syllabus fetch error:', error);
+      const msg = error instanceof Error ? error.message : '不明なエラー';
+      setFetchError(msg);
       toast({
         title: 'エラー',
-        description: `シラバスの取得に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
+        description: `シラバスの取得に失敗しました: ${msg}`,
         variant: 'destructive',
       });
-      // ─── 修正: サンプルデータへのフォールバックを廃止 ───────────────────
-      // エラーをそのまま表示し、ユーザーに再試行を促す
+      // サンプルデータへのフォールバックなし — エラーをそのまま表示
     } finally {
       setIsLoading(false);
       setProgressStage('idle');
@@ -645,31 +651,38 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                 </div>
               )}
 
-              {fetchedSubjects.length === 0 && !isLoading && (
+              {/* エラー時のメッセージ（ダミーデータは表示しない） */}
+              {fetchError && !isLoading && fetchedSubjects.length === 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-red-700 font-semibold mb-1">取得に失敗しました</p>
+                      <p className="text-xs text-red-600">{fetchError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 取得ボタン：成功データがない場合に表示（ローディング中は非表示） */}
+              {!isLoading && fetchedSubjects.length === 0 && (
                 <Button
                   onClick={handleFetchSyllabus}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-base"
                 >
                   <Book className="w-4 h-4 mr-2" />
-                  シラバスを自動取得
+                  {fetchError ? '再度取得する' : 'シラバスを自動取得'}
                 </Button>
               )}
 
+              {/* 取得成功済みの場合は再取得ボタン */}
               {fetchedSubjects.length > 0 && !isLoading && (
                 <Button onClick={handleFetchSyllabus} variant="outline" className="w-full">
                   再度取得
                 </Button>
               )}
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <p className="text-sm text-amber-700">
-                  <span className="font-semibold">注意:</span> シラバス自動取得には{' '}
-                  <code className="bg-amber-100 px-2 py-1 rounded text-xs font-mono">
-                    FIRECRAWL_API_KEY
-                  </code>{' '}
-                  環境変数が必要です。2件ずつレートリミットを考慮して処理します。
-                </p>
-              </div>
+
             </div>
           )}
 
